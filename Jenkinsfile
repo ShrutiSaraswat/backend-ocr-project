@@ -5,7 +5,7 @@ pipeline {
         PYTHON = '/usr/bin/python3'
         VENV_DIR = 'venv'
 
-        // Inject AWS credentials securely from Jenkins
+        // Inject AWS credentials securely from Jenkins secrets
         S3_BUCKET     = credentials('S3_BUCKET')
         S3_REGION     = credentials('S3_REGION')
         S3_ACCESS_KEY = credentials('S3_ACCESS_KEY')
@@ -15,14 +15,14 @@ pipeline {
     stages {
         stage('Clone Repository') {
             steps {
-                echo '📥 Cloning GitHub repository...'
-                git branch: 'main', credentialsId: 'your-credential-id', url: 'git@github.com:yourusername/yourrepo.git'
+                echo '📥 Cloning public GitHub repository...'
+                git branch: 'main', url: 'https://github.com/yourusername/yourrepo.git'
             }
         }
 
         stage('Set up Python Environment') {
             steps {
-                echo '🐍 Setting up Python virtual environment...'
+                echo '🐍 Creating virtual environment and installing dependencies...'
                 sh '''
                     python3 -m venv ${VENV_DIR}
                     . ${VENV_DIR}/bin/activate
@@ -32,39 +32,39 @@ pipeline {
             }
         }
 
-        stage('Verify Environment') {
+        stage('Check Dependencies') {
             steps {
-                echo '🔍 Checking dependencies...'
+                echo '🔍 Verifying required packages...'
                 sh '''
                     . ${VENV_DIR}/bin/activate
-                    python -c "import boto3, flask, dotenv; print('✅ Environment ready!')"
+                    python -c "import flask, boto3, dotenv; print('✅ All core packages installed!')"
                 '''
             }
         }
 
         stage('Run Tests') {
             steps {
-                echo '🧪 Running tests...'
+                echo '🧪 Running tests (if any)...'
                 sh '''
                     . ${VENV_DIR}/bin/activate
-                    python -m pytest || echo "⚠️ No tests configured, skipping..."
+                    python -m pytest || echo "⚠️ No tests configured, skipping test stage."
                 '''
             }
         }
 
         stage('Deploy Application') {
             steps {
-                echo '🚀 Deploying Flask OCR server...'
+                echo '🚀 Deploying Flask OCR app...'
                 sh '''
                     . ${VENV_DIR}/bin/activate
 
-                    # Stop existing Flask instance if running
+                    # Kill any previously running Flask server
                     pkill -f "python server.py" || true
 
-                    # Start the Flask server in background
+                    # Start the Flask app in background
                     nohup python server.py > app.log 2>&1 &
-                    sleep 5
-                    echo "Server started successfully!"
+
+                    echo "✅ Flask server started successfully!"
                 '''
             }
         }
@@ -72,13 +72,13 @@ pipeline {
 
     post {
         success {
-            echo '✅ Deployment successful!'
+            echo '✅ Build and deployment successful!'
         }
         failure {
-            echo '❌ Deployment failed. Check Jenkins logs for details.'
+            echo '❌ Build or deployment failed. Check Jenkins console output for details.'
         }
         always {
-            echo '📄 Build finished at: ' + new Date().toString()
+            echo '📅 Build completed at: ' + new Date().toString()
         }
     }
 }

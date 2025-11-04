@@ -32,7 +32,7 @@ pipeline {
             /XD .git venv .venv __pycache__ .pytest_cache ^
             /XF *.pyc *.pyo *.log >nul
 
-          rem ✅ Mark robocopy success if code < 8
+          rem  Mark robocopy success if code < 8
           set RC=%ERRORLEVEL%
           if %RC% LSS 8 (exit /b 0) else (exit /b %RC%)
         '''
@@ -59,7 +59,7 @@ pipeline {
           "%VENV_DIR%\\Scripts\\python.exe" -m pip install --upgrade pip
           "%VENV_DIR%\\Scripts\\python.exe" -m pip install -r requirements.txt
           "%VENV_DIR%\\Scripts\\python.exe" -m pip install waitress
-          "%VENV_DIR%\\Scripts\\python.exe" -c "import flask, waitress; print('✅ Flask + Waitress ready')"
+          "%VENV_DIR%\\Scripts\\python.exe" -c "import flask, waitress; print(' Flask + Waitress ready')"
         '''
       }
     }
@@ -114,7 +114,7 @@ pipeline {
           powershell -NoProfile -Command ^
             "$url='http://127.0.0.1:5000/health';" ^
             "for($i=1;$i -le 20;$i++){" ^
-            "  try{ $r=Invoke-WebRequest -Uri $url -UseBasicParsing -TimeoutSec 2; if($r.StatusCode -eq 200){ Write-Output '✅ Health OK'; exit 0 } } catch { }" ^
+            "  try{ $r=Invoke-WebRequest -Uri $url -UseBasicParsing -TimeoutSec 2; if($r.StatusCode -eq 200){ Write-Output ' Health OK'; exit 0 } } catch { }" ^
             "  Write-Output ('Attempt ' + $i + ' not ready, retrying...'); Start-Sleep -Seconds 2" ^
             "}; Write-Output '❌ Health check failed'; exit 1"
         '''
@@ -124,7 +124,7 @@ pipeline {
 
   post {
     success {
-      echo '✅ Build and persistent deployment successful!'
+      echo ' Build and persistent deployment successful!'
       bat '''
         echo Deployment path: %DEPLOY_DIR%
         echo Service name: %SERVICE_NAME%

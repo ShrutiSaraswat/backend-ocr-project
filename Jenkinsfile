@@ -70,9 +70,9 @@ pipeline {
                     rem === Kill any process using port 5000 ===
                     for /f "tokens=5" %%a in ('netstat -ano ^| find ":5000"') do taskkill /PID %%a /F 2>nul || echo No old process found
 
-                    rem === Start Flask app safely in background ===
+                    rem === Start Flask app safely in background (no redirection bug) ===
                     echo Starting Flask server in background...
-                    start /b cmd /c "call %VENV_DIR%\\Scripts\\activate && python server.py > flask_stdout.log 2>&1"
+                    start /b cmd /c "call %VENV_DIR%\\Scripts\\activate && python server.py"
                     timeout /t 5 >nul
                     echo ✅ Flask server started persistently on port 5000!
                 '''
@@ -111,7 +111,12 @@ pipeline {
             echo '✅ Build & deployment successful!'
             bat '''
                 echo Deployment path: %DEPLOY_DIR%
-                if exist "%DEPLOY_DIR%\\flask_stdout.log" echo ---- Flask stdout ---- && type "%DEPLOY_DIR%\\flask_stdout.log"
+                if exist "%DEPLOY_DIR%\\flask_stdout.log" (
+                    echo ---- Flask stdout ----
+                    type "%DEPLOY_DIR%\\flask_stdout.log"
+                ) else (
+                    echo No log file found (server started in background).
+                )
             '''
             archiveArtifacts artifacts: '*.log', allowEmptyArchive: true
         }

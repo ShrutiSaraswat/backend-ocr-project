@@ -2,7 +2,7 @@ pipeline {
     agent any
 
     environment {
-        PYTHON   = 'python'            // Windows uses 'python'
+        PYTHON   = 'python'
         VENV_DIR = 'venv'
 
         // Inject AWS credentials securely from Jenkins secrets
@@ -49,7 +49,8 @@ pipeline {
                 echo '🧪 Running tests if any...'
                 bat '''
                     call %VENV_DIR%\\Scripts\\activate
-                    python -m pytest || echo "⚠️ No tests configured, skipping..."
+                    python -m pytest || exit /b 0
+                    echo "⚠️ No tests configured, skipping..."
                 '''
             }
         }

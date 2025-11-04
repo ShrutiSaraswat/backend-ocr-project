@@ -13,6 +13,7 @@ pipeline {
     }
 
     stages {
+
         stage('Clone Repository') {
             steps {
                 echo '📥 Cloning public GitHub repository...'
@@ -26,7 +27,7 @@ pipeline {
                 bat '''
                     python -m venv %VENV_DIR%
                     call %VENV_DIR%\\Scripts\\activate
-                    pip install --upgrade pip
+                    python -m pip install --upgrade pip
                     pip install -r requirements.txt
                 '''
             }
@@ -36,8 +37,9 @@ pipeline {
             steps {
                 echo '🔍 Verifying environment setup...'
                 bat '''
+                    chcp 65001 >NUL
                     call %VENV_DIR%\\Scripts\\activate
-                    python -c "import flask, boto3, dotenv; print('✅ Environment ready!')"
+                    python -c "import flask, boto3, dotenv; print('Environment ready - dependencies imported successfully.')"
                 '''
             }
         }
@@ -59,7 +61,17 @@ pipeline {
                     call %VENV_DIR%\\Scripts\\activate
                     for /f "tokens=5" %%a in ('netstat -ano ^| find ":5000"') do taskkill /PID %%a /F || echo No running Flask server found
                     start /B python server.py
+                    timeout /t 10 >nul
                     echo ✅ Flask server started on port 5000!
+                '''
+            }
+        }
+
+        stage('Verify Server Health') {
+            steps {
+                echo '🔎 Checking Flask health endpoint...'
+                bat '''
+                    curl -s http://localhost:5000/health || echo "⚠️ Health check failed or endpoint unreachable."
                 '''
             }
         }

@@ -113,15 +113,15 @@ pipeline {
         }
         always {
             echo "📅 Build completed at: ${new Date()}"
-            echo '🛑 Stopping any running Flask process...'
-            bat '''
-                for /f "tokens=5" %%a in ('netstat -ano ^| find ":5000"') do (
-                    if not "%%a"=="0" (
-                        taskkill /PID %%a /F >nul 2>&1 || echo Could not kill PID %%a
-                    )
-                )
-                exit /b 0
-            '''
+            // echo '🛑 Stopping any running Flask process...'
+            // bat '''
+            //     for /f "tokens=5" %%a in ('netstat -ano ^| find ":5000"') do (
+            //         if not "%%a"=="0" (
+            //             taskkill /PID %%a /F >nul 2>&1 || echo Could not kill PID %%a
+            //         )
+            //     )
+            //     exit /b 0
+            // '''
         }
     }
 }

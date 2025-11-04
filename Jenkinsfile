@@ -98,14 +98,24 @@ pipeline {
     post {
         success {
             echo '✅ Build & deployment successful!'
-            archiveArtifacts artifacts: 'app.log', fingerprint: true
+            // Only archive if the file exists
+            bat '''
+                if exist app.log (
+                    echo Archiving app.log...
+                ) else (
+                    echo No app.log found, skipping archive.
+                )
+            '''
         }
         failure {
             echo '❌ Build or deployment failed. Check console output.'
-            archiveArtifacts artifacts: 'app.log', allowEmptyArchive: true
         }
         always {
             echo "📅 Build completed at: ${new Date()}"
+            // Auto stop Flask if running
+            bat '''
+                for /f "tokens=5" %%a in ('netstat -ano ^| find ":5000"') do taskkill /PID %%a /F || echo No Flask process running.
+            '''
         }
     }
 }

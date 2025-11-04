@@ -109,9 +109,9 @@ pipeline {
           "%NSSM_PATH%" stop "%SERVICE_NAME%" 1>nul 2>&1
           "%NSSM_PATH%" remove "%SERVICE_NAME%" confirm 1>nul 2>&1
 
-          echo ⚙️ Installing new service...
-          "%NSSM_PATH%" install "%SERVICE_NAME%" "%VENV_DIR%\\Scripts\\python.exe"
-          "%NSSM_PATH%" set "%SERVICE_NAME%" AppParameters "-m waitress --listen=0.0.0.0:5000 server:app"
+          echo ⚙️ Installing new service using waitress-serve.exe...
+          "%NSSM_PATH%" install "%SERVICE_NAME%" "%VENV_DIR%\\Scripts\\waitress-serve.exe"
+          "%NSSM_PATH%" set "%SERVICE_NAME%" AppParameters "--listen=0.0.0.0:5000 server:app"
           "%NSSM_PATH%" set "%SERVICE_NAME%" AppDirectory "%DEPLOY_DIR%"
           "%NSSM_PATH%" set "%SERVICE_NAME%" AppStdout "%DEPLOY_DIR%\\flask_out.log"
           "%NSSM_PATH%" set "%SERVICE_NAME%" AppStderr "%DEPLOY_DIR%\\flask_err.log"
@@ -119,6 +119,9 @@ pipeline {
           "%NSSM_PATH%" set "%SERVICE_NAME%" AppRestartDelay 5000
           "%NSSM_PATH%" set "%SERVICE_NAME%" DisplayName "OCR Flask API Service"
           "%NSSM_PATH%" set "%SERVICE_NAME%" Description "Persistent Flask OCR API running on port 5000"
+
+          rem ✅ Inject required environment variables
+          "%NSSM_PATH%" set "%SERVICE_NAME%" AppEnvironmentExtra "S3_BUCKET=%S3_BUCKET%;S3_REGION=%S3_REGION%;S3_ACCESS_KEY=%S3_ACCESS_KEY%;S3_SECRET_KEY=%S3_SECRET_KEY%"
 
           echo ▶️ Starting service...
           "%NSSM_PATH%" start "%SERVICE_NAME%"
@@ -136,7 +139,7 @@ pipeline {
           powershell -NoProfile -Command ^
             "$url='http://127.0.0.1:5000/health';" ^
             "for($i=1;$i -le 20;$i++){" ^
-            "  try{ $r=Invoke-WebRequest -Uri $url -UseBasicParsing -TimeoutSec 2; if($r.StatusCode -eq 200){ Write-Output ' Health OK'; exit 0 } } catch { }" ^
+            "  try{ $r=Invoke-WebRequest -Uri $url -UseBasicParsing -TimeoutSec 2; if($r.StatusCode -eq 200){ Write-Output '✅ Health OK'; exit 0 } } catch { }" ^
             "  Write-Output ('Attempt ' + $i + ' not ready, retrying...'); Start-Sleep -Seconds 2" ^
             "}; Write-Output '❌ Health check failed'; exit 1"
         '''
@@ -146,7 +149,7 @@ pipeline {
 
   post {
     success {
-      echo ' Build and persistent deployment successful!'
+      echo '✅ Build and persistent deployment successful!'
       bat '''
         echo Deployment path: %DEPLOY_DIR%
         echo Service name: %SERVICE_NAME%

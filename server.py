@@ -1,6 +1,6 @@
 # server.py
 # Upload PDF -> (optional decrypt w/ qpdf) -> ocrmypdf -> upload to S3 -> public URL
-# Improvements:
+# Improvements made:
 # - Pre-detect encryption with qpdf --show-encryption
 # - If no password and encrypted => 400 with clear message
 # - If password provided => decrypt first, then OCR

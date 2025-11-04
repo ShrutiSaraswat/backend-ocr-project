@@ -2,9 +2,9 @@ pipeline {
     agent any
 
     environment {
-        PYTHON     = 'python'
-        DEPLOY_DIR = 'C:\\DeployedApps\\OCRProject'
-        DEPLOY_VENV = 'C:\\DeployedApps\\OCRProject\\venv'
+        PYTHON       = 'python'
+        DEPLOY_DIR   = 'C:\\DeployedApps\\OCRProject'
+        DEPLOY_VENV  = 'C:\\DeployedApps\\OCRProject\\venv'
 
         // Optional AWS credentials
         S3_BUCKET     = credentials('S3_BUCKET')
@@ -62,7 +62,7 @@ pipeline {
                 bat '''
                     cd /d "%DEPLOY_DIR%"
                     call "%DEPLOY_VENV%\\Scripts\\activate"
-                    python -m pytest > "%DEPLOY_DIR%\\test_output.log" 2>&1 || echo "pytest not found or no tests. Skipping..." >> "%DEPLOY_DIR%\\test_output.log"
+                    python -m pytest > "%DEPLOY_DIR%\\test_output.log" 2>&1 || echo "pytest not found or no tests - skipping" >> "%DEPLOY_DIR%\\test_output.log"
                     exit /b 0
                 '''
             }
@@ -75,7 +75,7 @@ pipeline {
                     cd /d "%DEPLOY_DIR%"
                     setlocal enabledelayedexpansion
 
-                    rem === Stop old instance by PID file if present ===
+                    rem === Stop old instance by PID if present ===
                     if exist "%DEPLOY_DIR%\\flask.pid" (
                         set /p OLD=<"%DEPLOY_DIR%\\flask.pid"
                         if not "!OLD!"=="" (
@@ -98,8 +98,8 @@ pipeline {
                     powershell -NoProfile -ExecutionPolicy Bypass -Command ^
                       "$p = Start-Process -FilePath '%DEPLOY_VENV%\\Scripts\\python.exe' -ArgumentList 'server.py' -WorkingDirectory '%DEPLOY_DIR%' -WindowStyle Hidden -PassThru -RedirectStandardOutput '%DEPLOY_DIR%\\flask_out.log' -RedirectStandardError '%DEPLOY_DIR%\\flask_err.log'; Set-Content -Path '%DEPLOY_DIR%\\flask.pid' -Value $p.Id"
 
-                    rem Give it a moment to boot
-                    timeout /t 5 >nul
+                    rem === Wait for boot without using CMD timeout (which errors in Jenkins) ===
+                    powershell -NoProfile -Command "Start-Sleep -Seconds 5"
 
                     echo ✅ Flask server launch command issued.
                 '''
@@ -122,7 +122,7 @@ pipeline {
                     )
                     if !COUNT! lss !RETRIES! (
                         set /a COUNT+=1
-                        timeout /t 2 >nul
+                        powershell -NoProfile -Command "Start-Sleep -Seconds 2"
                         goto RETRY
                     )
                     echo ❌ Health check failed after !RETRIES! attempts.

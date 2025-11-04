@@ -5,7 +5,7 @@ pipeline {
         PYTHON   = 'python'
         VENV_DIR = 'venv'
 
-        // Inject AWS credentials securely from Jenkins credentials store
+        // Securely inject AWS credentials (optional)
         S3_BUCKET     = credentials('S3_BUCKET')
         S3_REGION     = credentials('S3_REGION')
         S3_ACCESS_KEY = credentials('S3_ACCESS_KEY')
@@ -60,8 +60,9 @@ pipeline {
                 echo '🚀 Starting Flask OCR service...'
                 bat '''
                     call %VENV_DIR%\\Scripts\\activate
-                    for /f "tokens=5" %%a in ('netstat -ano ^| find ":5000"') do taskkill /PID %%a /F || echo No running Flask server found
-                    powershell -NoProfile -ExecutionPolicy Bypass -Command "Start-Process python -ArgumentList 'server.py' -WindowStyle Hidden"
+                    for /f "tokens=5" %%a in ('netstat -ano ^| find ":5000"') do taskkill /PID %%a /F 2>nul || echo No running Flask server found
+                    echo Starting Flask server and logging output...
+                    powershell -NoProfile -ExecutionPolicy Bypass -Command "Start-Process python -ArgumentList 'server.py' -RedirectStandardOutput 'app.log' -RedirectStandardError 'app.log' -WindowStyle Hidden"
                     timeout /t 10 >nul
                     echo ✅ Flask server started on port 5000!
                     exit /b 0
@@ -98,7 +99,6 @@ pipeline {
     post {
         success {
             echo '✅ Build & deployment successful!'
-            // Only archive if the file exists
             bat '''
                 if exist app.log (
                     echo Archiving app.log...
@@ -106,15 +106,22 @@ pipeline {
                     echo No app.log found, skipping archive.
                 )
             '''
+            archiveArtifacts artifacts: 'app.log', allowEmptyArchive: true
         }
         failure {
             echo '❌ Build or deployment failed. Check console output.'
+            archiveArtifacts artifacts: 'app.log', allowEmptyArchive: true
         }
         always {
             echo "📅 Build completed at: ${new Date()}"
-            // Auto stop Flask if running
+            echo '🛑 Stopping any running Flask process...'
             bat '''
-                for /f "tokens=5" %%a in ('netstat -ano ^| find ":5000"') do taskkill /PID %%a /F || echo No Flask process running.
+                for /f "tokens=5" %%a in ('netstat -ano ^| find ":5000"') do (
+                    if not "%%a"=="0" (
+                        taskkill /PID %%a /F >nul 2>&1 || echo Could not kill PID %%a
+                    )
+                )
+                exit /b 0
             '''
         }
     }

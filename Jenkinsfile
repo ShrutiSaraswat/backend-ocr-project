@@ -109,9 +109,9 @@ pipeline {
           "%NSSM_PATH%" stop "%SERVICE_NAME%" 1>nul 2>&1
           "%NSSM_PATH%" remove "%SERVICE_NAME%" confirm 1>nul 2>&1
 
-          echo ⚙️ Installing new service using waitress-serve.exe...
-          "%NSSM_PATH%" install "%SERVICE_NAME%" "%VENV_DIR%\\Scripts\\waitress-serve.exe"
-          "%NSSM_PATH%" set "%SERVICE_NAME%" AppParameters "--listen=0.0.0.0:5000 server:app"
+          echo ⚙️ Installing new service using python.exe directly...
+          "%NSSM_PATH%" install "%SERVICE_NAME%" "%VENV_DIR%\\Scripts\\python.exe"
+          "%NSSM_PATH%" set "%SERVICE_NAME%" AppParameters "-m waitress --listen=0.0.0.0:5000 server:app"
           "%NSSM_PATH%" set "%SERVICE_NAME%" AppDirectory "%DEPLOY_DIR%"
           "%NSSM_PATH%" set "%SERVICE_NAME%" AppStdout "%DEPLOY_DIR%\\flask_out.log"
           "%NSSM_PATH%" set "%SERVICE_NAME%" AppStderr "%DEPLOY_DIR%\\flask_err.log"
@@ -120,7 +120,7 @@ pipeline {
           "%NSSM_PATH%" set "%SERVICE_NAME%" DisplayName "OCR Flask API Service"
           "%NSSM_PATH%" set "%SERVICE_NAME%" Description "Persistent Flask OCR API running on port 5000"
 
-          rem ✅ Inject required environment variables
+          rem ✅ Inject required environment variables for Flask runtime
           "%NSSM_PATH%" set "%SERVICE_NAME%" AppEnvironmentExtra "S3_BUCKET=%S3_BUCKET%;S3_REGION=%S3_REGION%;S3_ACCESS_KEY=%S3_ACCESS_KEY%;S3_SECRET_KEY=%S3_SECRET_KEY%"
 
           echo ▶️ Starting service...

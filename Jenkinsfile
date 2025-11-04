@@ -6,7 +6,7 @@ pipeline {
         VENV_DIR = 'venv'
         DEPLOY_DIR = 'C:\\DeployedApps\\OCRProject'
 
-        // Optional AWS credentials (safe placeholders)
+        // Optional AWS credentials
         S3_BUCKET     = credentials('S3_BUCKET')
         S3_REGION     = credentials('S3_REGION')
         S3_ACCESS_KEY = credentials('S3_ACCESS_KEY')
@@ -50,7 +50,7 @@ pipeline {
                 echo '🧪 Running tests if any...'
                 bat '''
                     call %VENV_DIR%\\Scripts\\activate
-                    python -m pytest > test_output.log 2>&1 || echo "⚠️ No tests configured, skipping tests..."
+                    python -m pytest || echo "⚠️ No tests configured, skipping tests..."
                     exit /b 0
                 '''
             }
@@ -67,14 +67,15 @@ pipeline {
                     cd /d "%DEPLOY_DIR%"
                     call %VENV_DIR%\\Scripts\\activate
 
-                    rem === Kill any process using port 5000 ===
+                    rem === Kill any old process using port 5000 ===
                     for /f "tokens=5" %%a in ('netstat -ano ^| find ":5000"') do taskkill /PID %%a /F 2>nul || echo No old process found
 
-                    rem === Start Flask app safely in background (no redirection bug) ===
+                    rem === Start Flask app safely in background (no redirection, no stdin issue) ===
                     echo Starting Flask server in background...
-                    start /b cmd /c "call %VENV_DIR%\\Scripts\\activate && python server.py"
+                    start "" /b cmd /c "call %VENV_DIR%\\Scripts\\activate && python server.py"
                     timeout /t 5 >nul
                     echo ✅ Flask server started persistently on port 5000!
+                    exit /b 0
                 '''
             }
         }
@@ -111,12 +112,7 @@ pipeline {
             echo '✅ Build & deployment successful!'
             bat '''
                 echo Deployment path: %DEPLOY_DIR%
-                if exist "%DEPLOY_DIR%\\flask_stdout.log" (
-                    echo ---- Flask stdout ----
-                    type "%DEPLOY_DIR%\\flask_stdout.log"
-                ) else (
-                    echo No log file found (server started in background).
-                )
+                echo You can verify by visiting http://localhost:5000
             '''
             archiveArtifacts artifacts: '*.log', allowEmptyArchive: true
         }

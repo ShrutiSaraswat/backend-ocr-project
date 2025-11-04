@@ -5,7 +5,7 @@ pipeline {
         PYTHON   = 'python'
         VENV_DIR = 'venv'
 
-        // Inject AWS credentials securely from Jenkins secrets
+        // Inject AWS credentials securely from Jenkins credentials store
         S3_BUCKET     = credentials('S3_BUCKET')
         S3_REGION     = credentials('S3_REGION')
         S3_ACCESS_KEY = credentials('S3_ACCESS_KEY')
@@ -58,22 +58,38 @@ pipeline {
         stage('Deploy Application') {
             steps {
                 echo '🚀 Starting Flask OCR service...'
-                // Use PowerShell to safely launch the Flask app
                 bat '''
                     call %VENV_DIR%\\Scripts\\activate
                     for /f "tokens=5" %%a in ('netstat -ano ^| find ":5000"') do taskkill /PID %%a /F || echo No running Flask server found
-                    powershell -NoProfile -ExecutionPolicy Bypass -Command "Start-Process python -ArgumentList 'server.py' -WindowStyle Hidden; exit 0"
+                    powershell -NoProfile -ExecutionPolicy Bypass -Command "Start-Process python -ArgumentList 'server.py' -WindowStyle Hidden"
                     timeout /t 10 >nul
                     echo ✅ Flask server started on port 5000!
+                    exit /b 0
                 '''
             }
         }
 
         stage('Verify Server Health') {
             steps {
-                echo '🔎 Checking Flask health endpoint...'
+                echo '🔎 Checking Flask health endpoint (with retry)...'
                 bat '''
-                    curl -s http://localhost:5000/health || echo "⚠️ Health check failed or endpoint unreachable."
+                    setlocal enabledelayedexpansion
+                    set RETRIES=3
+                    set COUNT=1
+                    :RETRY
+                    echo Attempt !COUNT! of !RETRIES!
+                    curl -s http://localhost:5000/health >nul 2>&1 && (
+                        echo ✅ Flask health check passed!
+                        exit /b 0
+                    )
+                    if !COUNT! lss !RETRIES! (
+                        set /a COUNT+=1
+                        echo Waiting before retry...
+                        timeout /t 5 >nul
+                        goto RETRY
+                    )
+                    echo ❌ Health check failed after !RETRIES! attempts.
+                    exit /b 1
                 '''
             }
         }

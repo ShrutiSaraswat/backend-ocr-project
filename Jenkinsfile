@@ -58,10 +58,11 @@ pipeline {
         stage('Deploy Application') {
             steps {
                 echo '🚀 Starting Flask OCR service...'
+                // Use PowerShell to safely launch the Flask app
                 bat '''
                     call %VENV_DIR%\\Scripts\\activate
                     for /f "tokens=5" %%a in ('netstat -ano ^| find ":5000"') do taskkill /PID %%a /F || echo No running Flask server found
-                    powershell -Command "Start-Process -FilePath 'python' -ArgumentList 'server.py' -NoNewWindow"
+                    powershell -NoProfile -ExecutionPolicy Bypass -Command "Start-Process python -ArgumentList 'server.py' -WindowStyle Hidden; exit 0"
                     timeout /t 10 >nul
                     echo ✅ Flask server started on port 5000!
                 '''
@@ -81,9 +82,11 @@ pipeline {
     post {
         success {
             echo '✅ Build & deployment successful!'
+            archiveArtifacts artifacts: 'app.log', fingerprint: true
         }
         failure {
             echo '❌ Build or deployment failed. Check console output.'
+            archiveArtifacts artifacts: 'app.log', allowEmptyArchive: true
         }
         always {
             echo "📅 Build completed at: ${new Date()}"

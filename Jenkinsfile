@@ -16,7 +16,7 @@ pipeline {
         stage('Clone Repository') {
             steps {
                 echo '📥 Cloning public GitHub repository...'
-                git branch: 'main', url: 'https://github.com/yourusername/yourrepo.git'
+                git branch: 'main', url: 'https://github.com/ShrutiSaraswat/backend-ocr-project.git'
             }
         }
 

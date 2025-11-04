@@ -109,9 +109,9 @@ pipeline {
           "%NSSM_PATH%" stop "%SERVICE_NAME%" 1>nul 2>&1
           "%NSSM_PATH%" remove "%SERVICE_NAME%" confirm 1>nul 2>&1
 
-          echo ⚙️ Installing new service using waitress-serve.exe...
-          "%NSSM_PATH%" install "%SERVICE_NAME%" "%VENV_DIR%\\Scripts\\waitress-serve.exe"
-          "%NSSM_PATH%" set "%SERVICE_NAME%" AppParameters "--listen=0.0.0.0:5000 server:app"
+          echo ⚙️ Installing new service...
+          "%NSSM_PATH%" install "%SERVICE_NAME%" "%VENV_DIR%\\Scripts\\python.exe"
+          "%NSSM_PATH%" set "%SERVICE_NAME%" AppParameters "-m waitress --listen=0.0.0.0:5000 server:app"
           "%NSSM_PATH%" set "%SERVICE_NAME%" AppDirectory "%DEPLOY_DIR%"
           "%NSSM_PATH%" set "%SERVICE_NAME%" AppStdout "%DEPLOY_DIR%\\flask_out.log"
           "%NSSM_PATH%" set "%SERVICE_NAME%" AppStderr "%DEPLOY_DIR%\\flask_err.log"

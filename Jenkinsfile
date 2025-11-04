@@ -2,10 +2,10 @@ pipeline {
     agent any
 
     environment {
-        PYTHON   = '/usr/bin/python3'
+        PYTHON   = 'python'            // Windows uses 'python'
         VENV_DIR = 'venv'
 
-        // AWS credentials stored in Jenkins
+        // Inject AWS credentials securely from Jenkins secrets
         S3_BUCKET     = credentials('S3_BUCKET')
         S3_REGION     = credentials('S3_REGION')
         S3_ACCESS_KEY = credentials('S3_ACCESS_KEY')
@@ -22,10 +22,10 @@ pipeline {
 
         stage('Set up Python Environment') {
             steps {
-                echo '🐍 Setting up Python virtual environment...'
-                sh '''
-                    python3 -m venv ${VENV_DIR}
-                    . ${VENV_DIR}/bin/activate
+                echo '🐍 Creating Python virtual environment...'
+                bat '''
+                    python -m venv %VENV_DIR%
+                    call %VENV_DIR%\\Scripts\\activate
                     pip install --upgrade pip
                     pip install -r requirements.txt
                 '''
@@ -34,10 +34,10 @@ pipeline {
 
         stage('Verify Dependencies') {
             steps {
-                echo '🔍 Verifying environment...'
-                sh '''
-                    . ${VENV_DIR}/bin/activate
-                    python -c "import flask, boto3, dotenv; print('✅ Core packages ok')"
+                echo '🔍 Verifying environment setup...'
+                bat '''
+                    call %VENV_DIR%\\Scripts\\activate
+                    python -c "import flask, boto3, dotenv; print('✅ Environment ready!')"
                 '''
             }
         }
@@ -45,26 +45,21 @@ pipeline {
         stage('Run Tests') {
             steps {
                 echo '🧪 Running tests if any...'
-                sh '''
-                    . ${VENV_DIR}/bin/activate
-                    python -m pytest || echo "⚠️ No tests present, skipping."
+                bat '''
+                    call %VENV_DIR%\\Scripts\\activate
+                    python -m pytest || echo "⚠️ No tests configured, skipping..."
                 '''
             }
         }
 
         stage('Deploy Application') {
             steps {
-                echo '🚀 Deploying Flask OCR service...'
-                sh '''
-                    . ${VENV_DIR}/bin/activate
-
-                    # Stop any currently running instance
-                    pkill -f "python server.py" || true
-
-                    # Start the Flask server in background
-                    nohup python server.py > app.log 2>&1 &
-                    sleep 5
-                    echo "✅ Server started."
+                echo '🚀 Starting Flask OCR service...'
+                bat '''
+                    call %VENV_DIR%\\Scripts\\activate
+                    for /f "tokens=5" %%a in ('netstat -ano ^| find ":5000"') do taskkill /PID %%a /F || echo No running Flask server found
+                    start /B python server.py
+                    echo ✅ Flask server started on port 5000!
                 '''
             }
         }
@@ -72,13 +67,13 @@ pipeline {
 
     post {
         success {
-            echo '✅ Build & deployment succeeded!'
+            echo '✅ Build & deployment successful!'
         }
         failure {
-            echo '❌ Build or deployment failed. Please check logs.'
+            echo '❌ Build or deployment failed. Check console output.'
         }
         always {
-            echo '📅 Build finished at: ' + new Date().toString()
+            echo "📅 Build completed at: ${new Date()}"
         }
     }
 }

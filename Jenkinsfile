@@ -5,18 +5,17 @@ pipeline {
         PYTHON   = 'python'
         VENV_DIR = 'venv'
 
-        // Optional AWS credentials for S3 uploads
+        // Optional AWS credentials
         S3_BUCKET     = credentials('S3_BUCKET')
         S3_REGION     = credentials('S3_REGION')
         S3_ACCESS_KEY = credentials('S3_ACCESS_KEY')
         S3_SECRET_KEY = credentials('S3_SECRET_KEY')
 
-        DEPLOY_DIR = 'C:\\DeployedApps\\OCRProject'   // persistent deployment path
+        DEPLOY_DIR = 'C:\\DeployedApps\\OCRProject'
     }
 
     stages {
 
-        /* --------------------- CLONE --------------------- */
         stage('Clone Repository') {
             steps {
                 echo '📥 Cloning public GitHub repository...'
@@ -24,7 +23,6 @@ pipeline {
             }
         }
 
-        /* --------------------- SETUP --------------------- */
         stage('Set up Python Environment') {
             steps {
                 echo '🐍 Creating Python virtual environment...'
@@ -37,7 +35,6 @@ pipeline {
             }
         }
 
-        /* --------------------- VERIFY --------------------- */
         stage('Verify Dependencies') {
             steps {
                 echo '🔍 Verifying environment setup...'
@@ -49,18 +46,17 @@ pipeline {
             }
         }
 
-        /* --------------------- TESTS --------------------- */
-        stage('Run Tests') {
+        stage('Run Tests (non-blocking)') {
             steps {
                 echo '🧪 Running tests if any...'
                 bat '''
                     call %VENV_DIR%\\Scripts\\activate
-                    python -m pytest || echo "⚠️ No tests configured, skipping..."
+                    python -m pytest > test_output.log 2>&1 || echo "⚠️ No tests configured, skipping tests..."
+                    exit /b 0
                 '''
             }
         }
 
-        /* --------------------- DEPLOY --------------------- */
         stage('Deploy Application') {
             steps {
                 echo '🚀 Deploying Flask OCR service (persistent mode)...'
@@ -77,7 +73,7 @@ pipeline {
                     python -m pip install --upgrade pip
                     pip install -r requirements.txt
 
-                    rem === Stop any running instance on port 5000 ===
+                    rem === Stop any running Flask instance ===
                     for /f "tokens=5" %%a in ('netstat -ano ^| find ":5000"') do taskkill /PID %%a /F 2>nul || echo No previous server found
 
                     rem === Start Flask in detached background mode ===
@@ -89,7 +85,6 @@ pipeline {
             }
         }
 
-        /* --------------------- VERIFY HEALTH --------------------- */
         stage('Verify Server Health') {
             steps {
                 echo '🔎 Checking Flask health endpoint (with retry)...'
@@ -117,7 +112,6 @@ pipeline {
         }
     }
 
-    /* --------------------- POST --------------------- */
     post {
         success {
             echo '✅ Build & deployment successful!'

@@ -61,7 +61,7 @@ pipeline {
                 bat '''
                     call %VENV_DIR%\\Scripts\\activate
                     for /f "tokens=5" %%a in ('netstat -ano ^| find ":5000"') do taskkill /PID %%a /F || echo No running Flask server found
-                    start /B python server.py
+                    powershell -Command "Start-Process -FilePath 'python' -ArgumentList 'server.py' -NoNewWindow"
                     timeout /t 10 >nul
                     echo ✅ Flask server started on port 5000!
                 '''

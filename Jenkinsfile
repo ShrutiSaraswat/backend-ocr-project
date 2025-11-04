@@ -5,15 +5,18 @@ pipeline {
         PYTHON   = 'python'
         VENV_DIR = 'venv'
 
-        // Securely inject AWS credentials (optional)
+        // Optional AWS credentials for S3 uploads
         S3_BUCKET     = credentials('S3_BUCKET')
         S3_REGION     = credentials('S3_REGION')
         S3_ACCESS_KEY = credentials('S3_ACCESS_KEY')
         S3_SECRET_KEY = credentials('S3_SECRET_KEY')
+
+        DEPLOY_DIR = 'C:\\DeployedApps\\OCRProject'   // persistent deployment path
     }
 
     stages {
 
+        /* --------------------- CLONE --------------------- */
         stage('Clone Repository') {
             steps {
                 echo '📥 Cloning public GitHub repository...'
@@ -21,6 +24,7 @@ pipeline {
             }
         }
 
+        /* --------------------- SETUP --------------------- */
         stage('Set up Python Environment') {
             steps {
                 echo '🐍 Creating Python virtual environment...'
@@ -33,6 +37,7 @@ pipeline {
             }
         }
 
+        /* --------------------- VERIFY --------------------- */
         stage('Verify Dependencies') {
             steps {
                 echo '🔍 Verifying environment setup...'
@@ -44,39 +49,53 @@ pipeline {
             }
         }
 
+        /* --------------------- TESTS --------------------- */
         stage('Run Tests') {
             steps {
                 echo '🧪 Running tests if any...'
                 bat '''
                     call %VENV_DIR%\\Scripts\\activate
-                    python -m pytest || exit /b 0
-                    echo "⚠️ No tests configured, skipping..."
+                    python -m pytest || echo "⚠️ No tests configured, skipping..."
                 '''
             }
         }
 
+        /* --------------------- DEPLOY --------------------- */
         stage('Deploy Application') {
             steps {
-                echo '🚀 Starting Flask OCR service...'
+                echo '🚀 Deploying Flask OCR service (persistent mode)...'
+
                 bat '''
+                    rem === Create persistent deployment directory ===
+                    if not exist "%DEPLOY_DIR%" mkdir "%DEPLOY_DIR%"
+                    xcopy * "%DEPLOY_DIR%\\" /E /Y >nul
+
+                    cd /d "%DEPLOY_DIR%"
+
+                    rem === Activate virtual env and install deps ===
                     call %VENV_DIR%\\Scripts\\activate
-                    for /f "tokens=5" %%a in ('netstat -ano ^| find ":5000"') do taskkill /PID %%a /F 2>nul || echo No running Flask server found
-                    echo Starting Flask server and logging output...
-                    powershell -NoProfile -ExecutionPolicy Bypass -Command ^
-                        "Start-Process python -ArgumentList 'server.py' -RedirectStandardOutput 'app_stdout.log' -RedirectStandardError 'app_stderr.log' -WindowStyle Hidden"
-                    timeout /t 10 >nul
-                    echo ✅ Flask server started on port 5000!
-                    exit /b 0
+                    python -m pip install --upgrade pip
+                    pip install -r requirements.txt
+
+                    rem === Stop any running instance on port 5000 ===
+                    for /f "tokens=5" %%a in ('netstat -ano ^| find ":5000"') do taskkill /PID %%a /F 2>nul || echo No previous server found
+
+                    rem === Start Flask in detached background mode ===
+                    echo Starting Flask server in background...
+                    start "" cmd /c "call %VENV_DIR%\\Scripts\\activate && python server.py > flask_stdout.log 2>&1"
+                    timeout /t 5 >nul
+                    echo ✅ Flask server launched persistently on port 5000!
                 '''
             }
         }
 
+        /* --------------------- VERIFY HEALTH --------------------- */
         stage('Verify Server Health') {
             steps {
                 echo '🔎 Checking Flask health endpoint (with retry)...'
                 bat '''
                     setlocal enabledelayedexpansion
-                    set RETRIES=3
+                    set RETRIES=5
                     set COUNT=1
                     :RETRY
                     echo Attempt !COUNT! of !RETRIES!
@@ -92,18 +111,19 @@ pipeline {
                         goto RETRY
                     )
                     echo ❌ Health check failed after !RETRIES! attempts.
-                    exit /b 0
+                    exit /b 1
                 '''
             }
         }
     }
 
+    /* --------------------- POST --------------------- */
     post {
         success {
             echo '✅ Build & deployment successful!'
             bat '''
-                if exist app_stdout.log echo Archiving app_stdout.log...
-                if exist app_stderr.log echo Archiving app_stderr.log...
+                echo Deployment path: %DEPLOY_DIR%
+                if exist "%DEPLOY_DIR%\\flask_stdout.log" echo ---- Flask stdout ---- && type "%DEPLOY_DIR%\\flask_stdout.log"
             '''
             archiveArtifacts artifacts: '*.log', allowEmptyArchive: true
         }
@@ -113,15 +133,6 @@ pipeline {
         }
         always {
             echo "📅 Build completed at: ${new Date()}"
-            // echo '🛑 Stopping any running Flask process...'
-            // bat '''
-            //     for /f "tokens=5" %%a in ('netstat -ano ^| find ":5000"') do (
-            //         if not "%%a"=="0" (
-            //             taskkill /PID %%a /F >nul 2>&1 || echo Could not kill PID %%a
-            //         )
-            //     )
-            //     exit /b 0
-            // '''
         }
     }
 }

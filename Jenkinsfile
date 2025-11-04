@@ -6,6 +6,7 @@ pipeline {
     DEPLOY_DIR   = 'C:\\DeployedApps\\OCRProject'
     VENV_DIR     = 'C:\\DeployedApps\\OCRProject\\.venv'
     SERVICE_NAME = 'OCRFlask'
+    NSSM_PATH    = 'C:\\nssm\\nssm.exe'
 
     // Optional AWS credentials
     S3_BUCKET     = credentials('S3_BUCKET')
@@ -27,13 +28,11 @@ pipeline {
         echo '📦 Syncing sources into DEPLOY_DIR without any virtualenv...'
         bat '''
           if not exist "%DEPLOY_DIR%" mkdir "%DEPLOY_DIR%"
-
-          rem Mirror source dir but exclude Python caches, any venv, and logs
           robocopy . "%DEPLOY_DIR%" /MIR ^
             /XD .git venv .venv __pycache__ .pytest_cache ^
             /XF *.pyc *.pyo *.log >nul
 
-          rem Map robocopy result to success when < 8 (0..7 are success states)
+          rem ✅ Mark robocopy success if code < 8
           set RC=%ERRORLEVEL%
           if %RC% LSS 8 (exit /b 0) else (exit /b %RC%)
         '''
@@ -48,25 +47,24 @@ pipeline {
             %PYTHON% -m venv "%VENV_DIR%"
           )
           "%VENV_DIR%\\Scripts\\python.exe" -V
-          where python
         '''
       }
     }
 
     stage('Install requirements into deploy venv') {
       steps {
-        echo '📦 Installing Python deps into the correct venv...'
+        echo '📦 Installing Python dependencies...'
         bat '''
           cd /d "%DEPLOY_DIR%"
           "%VENV_DIR%\\Scripts\\python.exe" -m pip install --upgrade pip
           "%VENV_DIR%\\Scripts\\python.exe" -m pip install -r requirements.txt
           "%VENV_DIR%\\Scripts\\python.exe" -m pip install waitress
-          "%VENV_DIR%\\Scripts\\python.exe" -c "import sys, flask, waitress; print('Using:', sys.executable)"
+          "%VENV_DIR%\\Scripts\\python.exe" -c "import flask, waitress; print('✅ Flask + Waitress ready')"
         '''
       }
     }
 
-    stage('Open firewall for 5000') {
+    stage('Open firewall for port 5000') {
       steps {
         bat '''
           powershell -NoProfile -Command "if (-not (Get-NetFirewallRule -DisplayName 'OCR Flask 5000' -ErrorAction SilentlyContinue)) { New-NetFirewallRule -DisplayName 'OCR Flask 5000' -Direction Inbound -Action Allow -Protocol TCP -LocalPort 5000 | Out-Null }"
@@ -74,55 +72,44 @@ pipeline {
       }
     }
 
-    stage('Deploy - service or detached process') {
+    stage('Deploy as persistent Windows Service (NSSM)') {
       steps {
-        echo '🚀 Starting Waitress server...'
+        echo '🚀 Installing/Restarting OCRFlask service via NSSM...'
         bat '''
           cd /d "%DEPLOY_DIR%"
-          setlocal enabledelayedexpansion
 
-          rem Stop prior PID if present
-          if exist "%DEPLOY_DIR%\\flask.pid" (
-            for /f %%p in (%DEPLOY_DIR%\\flask.pid) do taskkill /PID %%p /F 1>nul 2>&1
-            del "%DEPLOY_DIR%\\flask.pid" 1>nul 2>&1
+          if not exist "%NSSM_PATH%" (
+            echo ❌ NSSM not found at %NSSM_PATH%
+            exit /b 1
           )
 
-          rem Kill any listener on 5000
-          for /F "tokens=5" %%a in ('netstat -ano ^| find ":5000" ^| find "LISTENING"') do taskkill /PID %%a /F 1>nul 2>&1
+          echo 🧹 Stopping existing service if any...
+          "%NSSM_PATH%" stop "%SERVICE_NAME%" 1>nul 2>&1
+          "%NSSM_PATH%" remove "%SERVICE_NAME%" confirm 1>nul 2>&1
 
-          rem Clear old logs
-          del "%DEPLOY_DIR%\\flask_out.log"  1>nul 2>&1
-          del "%DEPLOY_DIR%\\flask_err.log"  1>nul 2>&1
+          echo ⚙️ Installing new service...
+          "%NSSM_PATH%" install "%SERVICE_NAME%" "%VENV_DIR%\\Scripts\\python.exe" "-m waitress --host=0.0.0.0 --port=5000 server:app"
 
-          set NSSM=C:\\nssm\\nssm.exe
-          set SVC=%SERVICE_NAME%
+          "%NSSM_PATH%" set "%SERVICE_NAME%" AppDirectory "%DEPLOY_DIR%"
+          "%NSSM_PATH%" set "%SERVICE_NAME%" AppStdout "%DEPLOY_DIR%\\flask_out.log"
+          "%NSSM_PATH%" set "%SERVICE_NAME%" AppStderr "%DEPLOY_DIR%\\flask_err.log"
+          "%NSSM_PATH%" set "%SERVICE_NAME%" Start SERVICE_AUTO_START
+          "%NSSM_PATH%" set "%SERVICE_NAME%" AppRestartDelay 5000
+          "%NSSM_PATH%" set "%SERVICE_NAME%" DisplayName "OCR Flask API Service"
+          "%NSSM_PATH%" set "%SERVICE_NAME%" Description "Persistent Flask OCR API running on port 5000"
 
-          if exist "!NSSM!" (
-            echo Using NSSM service...
-            "!NSSM!" stop  "!SVC!"  1>nul 2>&1
-            "!NSSM!" remove "!SVC!" confirm 1>nul 2>&1
-            "!NSSM!" install "!SVC!" "%VENV_DIR%\\Scripts\\python.exe" "-m waitress --host=0.0.0.0 --port=5000 server:app"
-            "!NSSM!" set "!SVC!" AppDirectory "%DEPLOY_DIR%"
-            "!NSSM!" set "!SVC!" AppStdout   "%DEPLOY_DIR%\\flask_out.log"
-            "!NSSM!" set "!SVC!" AppStderr   "%DEPLOY_DIR%\\flask_err.log"
-            "!NSSM!" set "!SVC!" Start SERVICE_AUTO_START
-            "!NSSM!" set "!SVC!" AppRestartDelay 5000
-            "!NSSM!" start "!SVC!"
-          ) else (
-            echo NSSM not found - starting detached process...
-            powershell -NoProfile -ExecutionPolicy Bypass -Command ^
-              "$p = Start-Process -FilePath '%VENV_DIR%\\Scripts\\python.exe' -ArgumentList '-m waitress --host=0.0.0.0 --port=5000 server:app' -WorkingDirectory '%DEPLOY_DIR%' -WindowStyle Hidden -PassThru -RedirectStandardOutput '%DEPLOY_DIR%\\flask_out.log' -RedirectStandardError '%DEPLOY_DIR%\\flask_err.log'; Set-Content -Path '%DEPLOY_DIR%\\flask.pid' -Value $p.Id"
-            powershell -NoProfile -Command "Start-Sleep -Seconds 3"
-          )
+          echo ▶️ Starting service...
+          "%NSSM_PATH%" start "%SERVICE_NAME%"
+          powershell -NoProfile -Command "Start-Sleep -Seconds 5"
 
-          endlocal
+          sc query "%SERVICE_NAME%"
         '''
       }
     }
 
-    stage('Health check') {
+    stage('Health Check (persistent service)') {
       steps {
-        echo '🔎 Verifying /health via PowerShell...'
+        echo '🔎 Verifying /health endpoint...'
         bat '''
           powershell -NoProfile -Command ^
             "$url='http://127.0.0.1:5000/health';" ^
@@ -140,21 +127,18 @@ pipeline {
       echo '✅ Build and persistent deployment successful!'
       bat '''
         echo Deployment path: %DEPLOY_DIR%
+        echo Service name: %SERVICE_NAME%
+        echo Logs: %DEPLOY_DIR%\\flask_out.log / %DEPLOY_DIR%\\flask_err.log
         echo Visit: http://127.0.0.1:5000/health
-        echo ---- Last 30 lines of flask_out.log ----
-        powershell -NoProfile -Command "if (Test-Path '%DEPLOY_DIR%\\flask_out.log') { Get-Content -Path '%DEPLOY_DIR%\\flask_out.log' -Tail 30 }"
-        echo ---- Last 30 lines of flask_err.log ----
-        powershell -NoProfile -Command "if (Test-Path '%DEPLOY_DIR%\\flask_err.log') { Get-Content -Path '%DEPLOY_DIR%\\flask_err.log' -Tail 30 }"
+        powershell -NoProfile -Command "if (Test-Path '%DEPLOY_DIR%\\flask_out.log') { Get-Content '%DEPLOY_DIR%\\flask_out.log' -Tail 30 }"
       '''
-      archiveArtifacts artifacts: '*.log', allowEmptyArchive: true
     }
     failure {
       echo '❌ Build or deployment failed. See logs above.'
       bat '''
         echo ---- Last 60 lines of flask_err.log (if any) ----
-        powershell -NoProfile -Command "if (Test-Path '%DEPLOY_DIR%\\flask_err.log') { Get-Content -Path '%DEPLOY_DIR%\\flask_err.log' -Tail 60 }"
+        powershell -NoProfile -Command "if (Test-Path '%DEPLOY_DIR%\\flask_err.log') { Get-Content '%DEPLOY_DIR%\\flask_err.log' -Tail 60 }"
       '''
-      archiveArtifacts artifacts: '*.log', allowEmptyArchive: true
     }
     always {
       echo "📅 Build completed at: ${new Date()}"

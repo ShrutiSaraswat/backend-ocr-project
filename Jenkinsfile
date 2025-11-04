@@ -4,14 +4,13 @@ pipeline {
     environment {
         PYTHON   = 'python'
         VENV_DIR = 'venv'
+        DEPLOY_DIR = 'C:\\DeployedApps\\OCRProject'
 
-        // Optional AWS credentials
+        // Optional AWS credentials (safe placeholders)
         S3_BUCKET     = credentials('S3_BUCKET')
         S3_REGION     = credentials('S3_REGION')
         S3_ACCESS_KEY = credentials('S3_ACCESS_KEY')
         S3_SECRET_KEY = credentials('S3_SECRET_KEY')
-
-        DEPLOY_DIR = 'C:\\DeployedApps\\OCRProject'
     }
 
     stages {
@@ -59,28 +58,23 @@ pipeline {
 
         stage('Deploy Application') {
             steps {
-                echo '🚀 Deploying Flask OCR service (persistent mode)...'
-
+                echo '🚀 Deploying Flask OCR service persistently...'
                 bat '''
-                    rem === Create persistent deployment directory ===
+                    rem === Create deployment directory ===
                     if not exist "%DEPLOY_DIR%" mkdir "%DEPLOY_DIR%"
                     xcopy * "%DEPLOY_DIR%\\" /E /Y >nul
 
                     cd /d "%DEPLOY_DIR%"
-
-                    rem === Activate virtual env and install deps ===
                     call %VENV_DIR%\\Scripts\\activate
-                    python -m pip install --upgrade pip
-                    pip install -r requirements.txt
 
-                    rem === Stop any running Flask instance ===
-                    for /f "tokens=5" %%a in ('netstat -ano ^| find ":5000"') do taskkill /PID %%a /F 2>nul || echo No previous server found
+                    rem === Kill any process using port 5000 ===
+                    for /f "tokens=5" %%a in ('netstat -ano ^| find ":5000"') do taskkill /PID %%a /F 2>nul || echo No old process found
 
-                    rem === Start Flask in detached background mode ===
+                    rem === Start Flask app safely in background ===
                     echo Starting Flask server in background...
-                    start "" cmd /c "call %VENV_DIR%\\Scripts\\activate && python server.py > flask_stdout.log 2>&1"
+                    start /b cmd /c "call %VENV_DIR%\\Scripts\\activate && python server.py > flask_stdout.log 2>&1"
                     timeout /t 5 >nul
-                    echo ✅ Flask server launched persistently on port 5000!
+                    echo ✅ Flask server started persistently on port 5000!
                 '''
             }
         }
